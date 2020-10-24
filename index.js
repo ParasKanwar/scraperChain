@@ -1,42 +1,29 @@
-const puppeteer = require("puppeteer");
-
-const urls = [
-    "https://in.tradingview.com/chart/?symbol=CURRENCYCOM%3AGOLD",
-    "https://www.tradingview.com/chart/?symbol=NSE%3ASBIN",
-    "https://www.tradingview.com/chart/?symbol=NSE%3AITC"
-];
-
-(async () => {
-    const browser = await puppeteer.launch({ headless: true });
-    for (let i = 0; i < urls.length - 1; i++) {
-        await browser.newPage();
-    }
-
-    const pages = await browser.pages();
-    for (let i = 0; i < pages.length; i++) {
-        await pages[i].exposeFunction("doSomething", (val) => {
-            console.log(`${urls[i]} ${val}}`);
-        })
-        await pages[i].goto(urls[i]);
-        await pages[i].evaluate(() => {
-            const target = document.querySelectorAll("span.priceWrapper-12IXdGf3");
-            for (let t of target) {
-                const observer = new MutationObserver((mutations) => {
-                    for (let mutation of mutations) {
-                        doSomething(mutation.target.textContent);
-                    }
-                });
-                observer.observe(t, {
-                    attributes: true,
-                    attributeOldValue: true,
-                    characterData: true,
-                    characterDataOldValue: true,
-                    childList: true,
-                    subtree: true
-                });
-            }
-        });
-    }
-})()
-
-
+const job = require("node-cron");
+const mongoose = require("mongoose");
+const { saveNifty100, changeConfig } = require("./getNifty200");
+const { getData } = require("./scrape_option_chain");
+job.schedule("*/50 * * * * *", async () => {
+  try {
+    await mongoose.connect(
+      "mongodb+srv://paras:PpdSKbOaWfSg9xm1@cluster0.7pnto.mongodb.net/Trading?retryWrites=true&w=majority",
+      {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+        useCreateIndex: true,
+      }
+    );
+    await saveNifty100();
+    await changeConfig();
+    await getData();
+    process.exit();
+  } catch (e) {
+    console.log(e.message);
+  }
+});
+// (async () => {
+//   try {
+//     await getData();
+//   } catch (e) {
+//     console.log(e.message);
+//   }
+// })();
