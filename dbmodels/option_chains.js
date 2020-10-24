@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const { option_chain } = require("./models_names");
 const schema = new mongoose.Schema({
   ticker: { type: String, required: true },
+  date: { type: String, required: true, unique: true },
   option_chain: [
     {
       CE_OI: { type: Number, default: 0 },

@@ -16,13 +16,16 @@ const getData = async (storeLocally = false) => {
   const { index, stocks } = JSON.parse(
     await fs.readFile(path.join(__dirname, "OptionChainConfig.json"))
   );
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox"],
+  });
   for (let i = 0; i < index.length + stocks.length; i++) {
     let isGt = i >= index.length;
     let gt = isGt ? stocks[i - index.length] : index[i];
     const page = await browser.newPage();
     await page.setUserAgent(
-      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36"
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36"
     );
     await page.exposeFunction("printSomething", async (val) => {
       const dirName = `./option_chain/${gt}`;
@@ -72,18 +75,38 @@ const getData = async (storeLocally = false) => {
               __dirname,
               dirName,
               `${gt}_${
-                dat.getDate() + "_" + dat.getMonth() + "_" + dat.getFullYear()
+                dat.getDate() +
+                "_" +
+                dat.getMonth() +
+                1 +
+                "_" +
+                dat.getFullYear()
               }.json`
             ),
             JSON.stringify(toSave)
           );
         }
         if (toSave.length > 0) {
-          const optionChain = new OPTION_CHAIN({
-            ticker: gt,
-            option_chain: toSave,
-          });
-          await optionChain.save();
+          const day = new Date();
+          try {
+            const optionChain = new OPTION_CHAIN({
+              ticker: gt,
+              option_chain: toSave,
+              date: `${gt}/${
+                day.getMonth() + 1
+              }/${day.getFullYear()}/${day.getDate()}`,
+            });
+            await optionChain.save();
+          } catch (e) {
+            const option_chain = await OPTION_CHAIN.findOne({
+              ticker: gt,
+              date: `${gt}/${
+                day.getMonth() + 1
+              }/${day.getFullYear()}/${day.getDate()}`,
+            });
+            option_chain.option_chain = toSave;
+            await option_chain.save();
+          }
         }
       } catch (e) {
         console.log(e.message);
@@ -96,19 +119,32 @@ const getData = async (storeLocally = false) => {
 };
 
 async function goToSpecificOptionChain(ticker, page, type) {
-  await page.goto(getOptionChainUrl(ticker), {
-    waitUntil: "load",
-  });
-  await page.evaluate(() => {
-    const tableRows = Array.from(document.querySelectorAll("table tr"));
-    const toMap = [];
-    for (let i = 5; i < tableRows.length - 2; i++) {
-      toMap.push(tableRows[i]);
-    }
-    const toReturn = toMap.map((td) => String(td.innerText).replace("\t", ""));
-    printSomething(toReturn);
-  });
-  await page.close();
+  try {
+    await page.goto(getOptionChainUrl(ticker), {
+      waitUntil: "load",
+      timeout: 10000,
+    });
+    await page.evaluate(() => {
+      const tableRows = Array.from(document.querySelectorAll("table tr"));
+      const toMap = [];
+      for (let i = 5; i < tableRows.length - 2; i++) {
+        toMap.push(tableRows[i]);
+      }
+      const toReturn = toMap.map((td) =>
+        String(td.innerText).replace("\t", "")
+      );
+      printSomething(toReturn);
+    });
+    console.log(`successfully added ${ticker}`);
+    await page.close();
+  } catch (e) {
+    await page.close();
+    console.log(
+      `hey error here skipping ${ticker} can't connect to ${getOptionChainUrl(
+        ticker
+      )}`
+    );
+  }
 }
 async function saveToDb1(toSave, gt) {
   const { lastErrorObject } = await mongoose.connection
